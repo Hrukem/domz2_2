@@ -38,15 +38,15 @@ func main() {
 
 	users := generateUsers(100)
 
-	var mg sync.WaitGroup
-	mg.Add(1)
-	saveUserInfo(users, &mg)
-	mg.Wait()
+	var wg sync.WaitGroup
+	wg.Add(1)
+	saveUserInfo(users, &wg)
+	wg.Wait()
 
 	fmt.Printf("DONE! Time Elapsed: %.2f seconds\n", time.Since(startTime).Seconds())
 }
 
-func saveUserInfo(users []User, mg *sync.WaitGroup) {
+func saveUserInfo(users []User, wg *sync.WaitGroup) {
 	task := make(chan User)
 
 	for i := 0; i < 10; i++ {
@@ -57,7 +57,7 @@ func saveUserInfo(users []User, mg *sync.WaitGroup) {
 		for _, user := range users {
 			task <- user
 		}
-		mg.Done()
+		wg.Done()
 	}()
 }
 
@@ -87,8 +87,8 @@ func saveUser(task <-chan User) {
 
 func generateUsers(count int) []User {
 	users := make([]User, count)
-	task := make(chan int, 10)
-	res := make(chan User, 10)
+	task := make(chan int)
+	res := make(chan User)
 
 	for i := 0; i < 10; i++ {
 		go makeUser(task, res)
@@ -98,13 +98,13 @@ func generateUsers(count int) []User {
 		for i := 0; i < count; i++ {
 			task <- i
 		}
-		defer close(task)
+		close(task)
 	}()
 
 	for i := 0; i < count; i++ {
 		users[i] = <-res
 	}
-	defer close(res)
+	close(res)
 
 	return users
 }
