@@ -2,12 +2,14 @@ package main
 
 import (
 	"fmt"
+	"golang.org/x/sync/errgroup"
 	"log"
 	"math/rand"
 	"os"
-	"sync"
 	"time"
 )
+
+const COUNTGOURUTINES = 100
 
 var actions = []string{"logged in", "logged out", "created record", "deleted record", "updated account"}
 
@@ -38,30 +40,35 @@ func main() {
 
 	users := generateUsers(100)
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	saveUserInfo(users, &wg)
-	wg.Wait()
+	g := errgroup.Group{}
+
+	saveUserInfo(users, &g)
+
+	if err := g.Wait(); err != nil {
+		fmt.Println("error when saving to a file, row 60", err)
+	}
 
 	fmt.Printf("DONE! Time Elapsed: %.2f seconds\n", time.Since(startTime).Seconds())
 }
 
-func saveUserInfo(users []User, wg *sync.WaitGroup) {
+func saveUserInfo(users []User, g *errgroup.Group) {
 	task := make(chan User)
 
-	for i := 0; i < 10; i++ {
-		go saveUser(task)
+	for i := 0; i < COUNTGOURUTINES; i++ {
+		g.Go(func() error {
+			return saveUser(task)
+		})
 	}
 
 	go func() {
 		for _, user := range users {
 			task <- user
 		}
-		wg.Done()
+		close(task)
 	}()
 }
 
-func saveUser(task <-chan User) {
+func saveUser(task <-chan User) error {
 	for user := range task {
 		fmt.Printf("WRITING FILE FOR UID %d\n", user.id)
 
@@ -69,20 +76,24 @@ func saveUser(task <-chan User) {
 		fmt.Println(filename)
 		file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("error in saveUser() row 79", err)
+			return err
 		}
 
 		_, err = file.WriteString(user.getActivityInfo())
 		if err != nil {
-			log.Fatal(err)
+			log.Println("error in saveUser() row 85", err)
+			return err
 		}
 		err = file.Close()
 		if err != nil {
-			log.Fatal(err)
+			log.Println("error in saveUser() row 90", err)
+			return err
 		}
 
 		time.Sleep(time.Second)
 	}
+	return nil
 }
 
 func generateUsers(count int) []User {
@@ -90,7 +101,7 @@ func generateUsers(count int) []User {
 	task := make(chan int)
 	res := make(chan User)
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < COUNTGOURUTINES; i++ {
 		go makeUser(task, res)
 	}
 
